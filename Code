@@ -3,6 +3,8 @@
        Année: 2024-2025
 */
 
+/************************************************************************** PARTIE 1 **********************************************************************/
+
 /* Définition de la bibliothèque "MYDATA" (chemin à adapter) */
 LIBNAME MYDATA "/home/u64135306/sasuser.v94/Cours Variables Qualitatives/Exercice 1"; /*MYDATA, est un
 raccourci pour aller vers le dossier Exercice1, en plus MYDATA contiendra toutes mes tables que j'aurai à créer*/
@@ -189,4 +191,93 @@ PROC SQL;
 QUIT;
 
 PROC PRINT DATA=MYDATA.Synthese_Regression LABEL NOOBS; TITLE "Synthèse des résultats des régressions"; RUN;
+
+/* ************************************************************************************ PARTIE 2 ***************************************************************************/
+/* (Chemin à adapter) */
+LIBNAME MYDATA2 "/home/u64135306/sasuser.v94/Cours Variables Qualitatives/Exercice2";
+LIBNAME MYDATA "/home/u64135306/sasuser.v94/Cours Variables Qualitatives/Exercice 1";
+
+PROC IMPORT DATAFILE="/home/u64135306/sasuser.v94/Cours Variables Qualitatives/Exercice2/ColSelected.csv"
+    OUT=MYDATA2.Colselected
+    DBMS=CSV
+    REPLACE;
+    GETNAMES=YES;
+    GUESSINGROWS=MAX; 
+RUN;
+
+
+/* QUESTION 1: Fusion */
+PROC SORT DATA=MYDATA2.Colselected; BY mident mois; RUN;
+PROC SORT DATA=MYDATA.panel95_table; BY mident mois; RUN;
+
+DATA MYDATA2.fusion_table; MERGE MYDATA2.Colselected (IN=a) MYDATA.panel95_table (IN=b); BY mident mois; IF a AND b; RUN;
+
+/* QUESTION 2. Regression (MCO) 'actifs' sur les différentes indicatrice d'éducation*/
+PROC REG DATA=MYDATA2.fusion_table OUTEST=estimates;
+    MODEL actifs = primaire secondaire professionnel_court professionnel_long cycle2 cycle3;
+    OUTPUT OUT=MYDATA2.fusion_table PREDICTED=p1reg RESIDUAL=residual;
+    TITLE "Régression MCO de la probabilité d'activité secondaire (actifs) sur l'éducation";
+RUN;
+
+/* QUESTION3:Ajoute à la table de travail, la probabilité d'activité secondaire ("actifs") qui a été prédite par le modèle MCO, noté p1reg, ainsi qu'un estimateur de l'écart-type du résidu, noté 'sigmalreg'. 
+             Représenter graphiquement la distribution de p1reg */
+
+/*ajout de la prédiction p1reg à la table => cf question2*/
+DATA MYDATA2.fusion_table; SET MYDATA2.fusion_table; sigmalreg = SQRT(p1reg * (1 - p1reg)); RUN;
+
+/**Représentation graphique de la distribution p1reg*/
+PROC SGPLOT DATA=MYDATA2.fusion_table;
+    HISTOGRAM p1reg / FILLATTRS=(COLOR=skyblue TRANSPARENCY=0.3);
+    DENSITY p1reg / TYPE=KERNEL LINEATTRS=(COLOR=green THICKNESS=2) LEGENDLABEL="Kernel";
+    DENSITY p1reg / TYPE=NORMAL LINEATTRS=(COLOR=red PATTERN=DASH) LEGENDLABEL="Normale";
+    KEYLEGEND / LOCATION=INSIDE POSITION=TOPRIGHT;
+    TITLE "Distribution de la probabilité d'activité secondaire prédite p1reg ";
+RUN;
+
+
+/*QUESTION 4 : Régresser (MCP) actifs sur les différentes indicatrices d'éducation*/
+                   /*Calcul du poids */
+DATA MYDATA2.fusion_table; SET MYDATA2.fusion_table; poids_mcp = 1 / sigmalreg; RUN;
+         /*Regression MCP (pour corriger l'hétéroscédasticité)*/
+PROC REG DATA=MYDATA2.fusion_table;
+    MODEL actifs = primaire secondaire professionnel_court professionnel_long cycle2 cycle3;
+    WEIGHT poids_mcp;
+    TITLE "Régression MCP de la probabilité d'activité secondaire (actifs) sur l'éducation ";
+RUN;
+
+/*QUESTION 5: créer les variables : agea2 = agea² et agea = agea au cube*/
+DATA MYDATA2.fusion_table; SET MYDATA2.fusion_table; agea2 = agea**2; agea3 = agea**3; RUN;
+
+/*Question 6 : Regresser actifs sur agea, agea2, agea3 ET les différentes indicatrices d'éducation Et l'indicatrice de sexe féminin*/
+PROC REG DATA=MYDATA2.fusion_table;
+    MODEL actifs = agea agea2 agea3 primaire secondaire professionnel_court professionnel_long cycle2 cycle3 Femme;
+    OUTPUT OUT=MYDATA2.fusion_table PREDICTED=p2reg;
+    TITLE "Régression MCO de la probabilité d'activité secondaire sur l'éducation, l'âge et le sexe (Femme)";
+RUN;
+
+/*QUESTION 7: Ajouter à la table de travail la propabilité d'activité secondaire prédite par ce nouveau modèle notée p2reg. Représenter graphiquement la distribution de p2reg*/
+/*Ajout des proba prédit cf question 6*/
+
+PROC SGPLOT DATA=MYDATA2.fusion_table;
+    HISTOGRAM p2reg / FILLATTRS=(COLOR=CX5A9BD4 TRANSPARENCY=0.3);
+    DENSITY p2reg / TYPE=NORMAL LINEATTRS=(COLOR=red PATTERN=DASH) LEGENDLABEL="Normale";
+    DENSITY p2reg / TYPE=KERNEL LINEATTRS=(COLOR=CX3CB371 THICKNESS=2) LEGENDLABEL="Kernel";
+    TITLE "Distribution de la probabilité d'activité secondaire prédite (p2reg)";
+RUN;
+
+
+/*QUESTION 9: Comparer les résultats obtenus en remplacant l'indicatrice de sexe féminin par l'indicatrice de sexe masculin, puis par la variable sexeN. Commenter précisement chacune des différences entre ces trois modèles*/
+
+/*Modèle avec Homme*/
+PROC REG DATA=MYDATA2.fusion_table;
+    MODEL actifs = agea agea2 agea3 primaire secondaire professionnel_court professionnel_long cycle2 cycle3 Homme;
+    TITLE "Régression avec l'indicatrice Homme";
+RUN;
+
+/* Modèle avec sexeN */
+PROC REG DATA=MYDATA2.fusion_table;
+    MODEL actifs = agea agea2 agea3 primaire secondaire professionnel_court professionnel_long cycle2 cycle3 sexeN;
+    TITLE "Régression avec sexeN";
+RUN;
+
 
